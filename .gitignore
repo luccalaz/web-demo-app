@@ -1,0 +1,4 @@
+/node_modules
+/logs
+database.db
+package-lock.json

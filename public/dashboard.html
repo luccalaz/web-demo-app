@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard - Insecure Banking App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  </head>
+
+  <body class="bg-gray-100">
+    <div class="w-11/12 max-w-5xl mx-auto my-6 bg-white p-6 rounded-lg shadow-md">
+      <div class="flex justify-between items-center border-b border-gray-200 pb-4 mb-6">
+        <div>
+          <h1 class="text-2xl font-bold">
+            Welcome, <span id="username" class="text-blue-600">User</span>
+          </h1>
+        </div>
+        <div class="text-right">
+          <div class="text-xl font-bold text-blue-600 mb-2">
+            Balance: $<span id="balance">0.00</span>
+          </div>
+          <a
+            href="/logout"
+            class="inline-block bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm transition duration-300"
+            >Logout</a
+          >
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <div class="bg-gray-50 p-4 rounded-lg shadow">
+            <h2 class="text-xl font-semibold mb-4 pb-2 border-b border-gray-200">
+              Make a Transfer
+            </h2>
+            <form id="transfer-form">
+              <div class="mb-4">
+                <label for="recipient" class="block font-medium text-gray-700 mb-2"
+                  >Recipient</label
+                >
+                <input
+                  type="text"
+                  id="recipient"
+                  name="recipient"
+                  class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div class="mb-4">
+                <label for="amount" class="block font-medium text-gray-700 mb-2">Amount ($)</label>
+                <input
+                  type="number"
+                  id="amount"
+                  name="amount"
+                  step="0.01"
+                  min="0.01"
+                  class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div id="transfer-error" class="text-red-600 mb-4 hidden">
+                Transfer failed. Please try again.
+              </div>
+              <button
+                type="submit"
+                class="w-full bg-blue-500 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition duration-300"
+              >
+                Send Money
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div>
+          <div class="bg-gray-50 p-4 rounded-lg shadow">
+            <h2 class="text-xl font-semibold mb-4 pb-2 border-b border-gray-200">
+              Transaction History
+            </h2>
+            <div id="transactions-list">
+              <div class="p-3 border-b border-gray-100">
+                <p>Loading transactions...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      $(document).ready(function () {
+        // Fetch user info
+        function fetchUserInfo() {
+          $.ajax({
+            url: "/api/user-info",
+            method: "GET",
+            success: function (data) {
+              $("#username").text(data.username);
+              $("#balance").text(data.balance.toFixed(2));
+            },
+            error: function (error) {
+              console.error("Error fetching user info:", error);
+            },
+          });
+        }
+
+        // Fetch transaction history
+        function fetchTransactions() {
+          $.ajax({
+            url: "/api/transactions",
+            method: "GET",
+            success: function (transactions) {
+              const $transactionsList = $("#transactions-list");
+
+              if (transactions.length === 0) {
+                $transactionsList.html(
+                  '<div class="p-3 border-b border-gray-100"><p>No transactions yet.</p></div>'
+                );
+                return;
+              }
+
+              $transactionsList.empty();
+
+              $.each(transactions, function (index, transaction) {
+                const isNegative = transaction.amount < 0;
+                const formattedAmount = isNegative
+                  ? `-$${Math.abs(transaction.amount).toFixed(2)}`
+                  : `$${transaction.amount.toFixed(2)}`;
+
+                const $transaction = $('<div class="p-3 border-b border-gray-100"></div>');
+                const $amount = $("<span></span>")
+                  .text(formattedAmount)
+                  .addClass("font-bold")
+                  .addClass(isNegative ? "text-red-500" : "text-green-500");
+
+                const $details = $("<p></p>").append($amount);
+
+                if (transaction.recipient) {
+                  $details.append(` to ${transaction.recipient}`);
+                }
+
+                const $time = $('<small class="text-gray-500 block"></small>').text(
+                  new Date(transaction.timestamp).toLocaleString()
+                );
+
+                $transaction.append($details).append($time);
+                $transactionsList.append($transaction);
+              });
+            },
+            error: function (error) {
+              console.error("Error fetching transactions:", error);
+              $("#transactions-list").html(
+                '<div class="p-3 border-b border-gray-100"><p>Failed to load transactions.</p></div>'
+              );
+            },
+          });
+        }
+
+        // Handle transfer submission
+        $("#transfer-form").on("submit", function (event) {
+          event.preventDefault();
+
+          const recipient = $("#recipient").val();
+          const amount = $("#amount").val();
+          const $errorElement = $("#transfer-error");
+
+          $.ajax({
+            url: "/api/transfer",
+            method: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({ recipient, amount }),
+            success: function (result) {
+              // Reset form and error message
+              $("#transfer-form")[0].reset();
+              $errorElement.addClass("hidden");
+
+              // Refresh user data and transactions
+              fetchUserInfo();
+              fetchTransactions();
+            },
+            error: function (error) {
+              console.error("Error submitting transfer data:", error);
+              $errorElement.text(errorMsg).removeClass("hidden");
+            },
+          });
+        });
+
+        // Load data when page loads
+        fetchUserInfo();
+        fetchTransactions();
+      });
+    </script>
+  </body>
+</html>
